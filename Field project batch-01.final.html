@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5-Day Weather Forecast</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(to bottom, #87CEFA, #1E90FF);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .container {
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 95%;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        #cityInput {
+            padding: 8px;
+            font-size: 16px;
+            width: 70%;
+            max-width: 300px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #getWeatherButton {
+            padding: 8px 12px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+
+        #forecastChart {
+            margin-top: 20px;
+        }
+
+        #errorMessage {
+            color: red;
+            margin-top: 10px;
+        }
+
+        #currentTemp {
+            font-size: 18px;
+            color: #333;
+            margin-top: 15px;
+        }
+
+        .forecast-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>5-Day Weather Forecast</h1>
+    <input type="text" id="cityInput" placeholder="Enter city name...">
+    <button id="getWeatherButton">Get Forecast</button>
+    <div id="currentTemp"></div>
+    <canvas id="forecastChart" width="700" height="300"></canvas>
+    <div id="errorMessage"></div>
+</div>
+
+<script>
+    const API_KEY = "d812cb133b6f2333ed252592c414494e";
+    const cityInput = document.getElementById('cityInput');
+    const getWeatherButton = document.getElementById('getWeatherButton');
+    const errorMessage = document.getElementById('errorMessage');
+    const currentTemp = document.getElementById('currentTemp');
+    const ctx = document.getElementById('forecastChart').getContext('2d');
+    let forecastChart;
+
+    async function getForecast() {
+        const city = cityInput.value.trim();
+        if (!city) {
+            alert('Please enter a city name');
+            return;
+        }
+
+        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${API_KEY}&units=metric`;
+        const currentUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`;
+
+        try {
+            const [forecastResponse, currentResponse] = await Promise.all([
+                fetch(forecastUrl),
+                fetch(currentUrl)
+            ]);
+
+            const forecastData = await forecastResponse.json();
+            const currentData = await currentResponse.json();
+
+            if (forecastData.cod !== "200") {
+                showError(`Error: ${forecastData.message}`);
+                return;
+            }
+
+            if (currentData.cod !== 200) {
+                showError(`Error: ${currentData.message}`);
+                return;
+            }
+
+            // Show current temperature with degree symbol
+            const temp = currentData.main.temp.toFixed(1);
+            const description = currentData.weather[0].description;
+            currentTemp.innerHTML = `Current Temperature in ${city}: ${temp}&#176;C (${description})`;
+
+            // Process 5-day forecast
+            const dailyData = {};
+            forecastData.list.forEach(entry => {
+                const date = entry.dt_txt.split(" ")[0];
+                if (!dailyData[date]) {
+                    dailyData[date] = [];
+                }
+                dailyData[date].push(entry.main.temp);
+            });
+
+            const labels = Object.keys(dailyData).slice(0, 5);
+            const temps = labels.map(date => {
+                const dayTemps = dailyData[date];
+                const avgTemp = dayTemps.reduce((a, b) => a + b, 0) / dayTemps.length;
+                return avgTemp.toFixed(2);
+            });
+
+            displayChart(labels, temps);
+            errorMessage.innerText = "";
+        } catch (error) {
+            showError("Network error or API issue. Please check your internet connection.");
+        }
+    }
+
+    function displayChart(labels, temps) {
+        if (forecastChart) {
+            forecastChart.destroy();
+        }
+
+        forecastChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Avg Temperature (°C)',
+                    data: temps,
+                    backgroundColor: 'rgba(30, 144, 255, 0.2)',
+                    borderColor: 'rgba(30, 144, 255, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 5,
+                    pointBackgroundColor: 'rgba(255, 255, 255, 1)',
+                    pointBorderColor: 'rgba(30, 144, 255, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function showError(message) {
+        errorMessage.innerText = message;
+        currentTemp.innerText = "";
+    }
+
+    getWeatherButton.addEventListener('click', getForecast);
+    cityInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') getForecast();
+    });
+</script>
+</body>
+</html>
